@@ -1,0 +1,21 @@
+{
+  "adapter": "fna",
+  "tasks": [
+    "anatomy",
+    "astronomy"
+  ],
+  "grid_size": 128,
+  "nu": 0.05,
+  "trainable_params": 196608,
+  "per_task": {
+    "anatomy": {
+      "accuracy": 0.3259,
+      "time_s": 21.5
+    },
+    "astronomy": {
+      "accuracy": 0.3816,
+      "time_s": 24.2
+    }
+  },
+  "mean_accuracy": 0.3538
+}
