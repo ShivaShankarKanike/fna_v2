@@ -1,24 +1,25 @@
 
-import argparse, json, os, sys, time
+import argparse, json, os, sys, time, random
 from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fna import inject_fna_adapters, get_fna_optimizer_params, FNAOptimizer
 
+# ── Fixed config ────────────────────────────────────────────
 MODEL_NAME  = "t5-small"
 MAX_INPUT   = 512
 MAX_TARGET  = 4
 BATCH_SIZE  = 16
-GRID_SIZE   = 128
-ALPHA       = 1.0
-LORA_RANK   = 8
+GRID_SIZE   = 128        # FNA: 128x128 = 16,384 params per layer
 FNA_LR      = 3e-4
-FNA_NU      = 0.1515
+FNA_NU      = 0.2        # best from ablation
 LORA_LR     = 3e-4
 
-# Only encoder q,v — 12 layers, fair comparison both sides
+# Exactly 12 encoder q,v layers — explicit full names, no ambiguity
 ENCODER_QV = [
     "encoder.block.0.layer.0.SelfAttention.q",
     "encoder.block.0.layer.0.SelfAttention.v",
@@ -33,27 +34,39 @@ ENCODER_QV = [
     "encoder.block.5.layer.0.SelfAttention.q",
     "encoder.block.5.layer.0.SelfAttention.v",
 ]
+# ── End config ───────────────────────────────────────────────
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
 
 def format_mmlu(example):
-    choices = example["choices"]
-    labels  = ["A","B","C","D"]
-    cs      = " ".join(f"{l}. {c}" for l,c in zip(labels,choices))
+    labels = ["A","B","C","D"]
+    cs = " ".join(f"{l}. {c}" for l,c in zip(labels, example["choices"]))
     return f"question: {example['question']} choices: {cs}", labels[example["answer"]]
+
 
 def make_loader(task, tokenizer, split="test", batch_size=BATCH_SIZE):
     from datasets import load_dataset
     ds = load_dataset("cais/mmlu", task, split=split, trust_remote_code=False)
     inputs, targets = [], []
     for ex in ds:
-        i,t = format_mmlu(ex)
-        inputs.append(i); targets.append(t)
+        i, t = format_mmlu(ex)
+        inputs.append(i)
+        targets.append(t)
     enc = tokenizer(inputs, truncation=True, max_length=MAX_INPUT,
                     padding="max_length", return_tensors="pt")
     lbl = tokenizer(targets, max_length=MAX_TARGET,
                     padding="max_length", return_tensors="pt").input_ids
     lbl[lbl == tokenizer.pad_token_id] = -100
-    ds2 = torch.utils.data.TensorDataset(enc.input_ids, enc.attention_mask, lbl)
-    return DataLoader(ds2, batch_size=batch_size, shuffle=False)
+    dataset = torch.utils.data.TensorDataset(enc.input_ids, enc.attention_mask, lbl)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
 
 @torch.no_grad()
 def evaluate(model, tokenizer, task, device):
@@ -65,33 +78,50 @@ def evaluate(model, tokenizer, task, device):
     for input_ids, attn_mask, labels in loader:
         input_ids = input_ids.to(device)
         attn_mask = attn_mask.to(device)
-        outputs   = model.generate(input_ids=input_ids, attention_mask=attn_mask,
-                                   max_new_tokens=1, do_sample=False)
-        pred_ids  = outputs[:,1] if outputs.shape[1]>1 else outputs[:,0]
+        outputs = model.generate(input_ids=input_ids, attention_mask=attn_mask,
+                                 max_new_tokens=1, do_sample=False)
+        pred_ids = outputs[:,1] if outputs.shape[1] > 1 else outputs[:,0]
         for pred_id, label_row in zip(pred_ids, labels):
             gold = label_row[label_row != -100]
-            if len(gold)==0: continue
-            if pred_id.item()==gold[0].item(): correct+=1
-            total+=1
-    return correct/total if total>0 else 0.0
+            if len(gold) == 0:
+                continue
+            if pred_id.item() == gold[0].item():
+                correct += 1
+            total += 1
+    return correct / total if total > 0 else 0.0
 
-def train_fna(tasks, epochs, results_dir):
+
+def train_fna(tasks, epochs, lora_rank, seed, results_dir):
     from transformers import T5ForConditionalGeneration, T5Tokenizer
+    set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print("Adapter: FNA | Device:", device)
+
+    # FNA params: 12 layers x 128x128 = 196,608
+    fna_params_count = len(ENCODER_QV) * GRID_SIZE * GRID_SIZE
+    print(f"Adapter: FNA | layers={len(ENCODER_QV)} | grid={GRID_SIZE}x{GRID_SIZE}")
+    print(f"Trainable params: {fna_params_count:,} | nu={FNA_NU} | lr={FNA_LR} | seed={seed}")
+
     tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME)
     model     = T5ForConditionalGeneration.from_pretrained(MODEL_NAME)
+
     fna_layers = inject_fna_adapters(model, target_modules=ENCODER_QV,
-                                     grid_size=GRID_SIZE, alpha=ALPHA, verbose=False)
+                                     grid_size=GRID_SIZE, alpha=1.0, verbose=False)
     model = model.to(device)
+
     fna_params = get_fna_optimizer_params(model)
-    optimizer  = FNAOptimizer(fna_params, lr=FNA_LR, nu=FNA_NU)
-    total_trainable = sum(p.numel() for p in fna_params)
-    print("Trainable params:", total_trainable)
-    results = {"adapter":"fna","tasks":tasks,"grid_size":GRID_SIZE,
-               "nu":FNA_NU,"trainable_params":total_trainable,"per_task":{}}
+    actual_count = sum(p.numel() for p in fna_params)
+    print(f"Actual trainable params: {actual_count:,}")
+
+    optimizer = FNAOptimizer(fna_params, lr=FNA_LR, nu=FNA_NU)
+
+    results = {
+        "adapter": "fna", "tasks": tasks, "epochs": epochs,
+        "grid_size": GRID_SIZE, "nu": FNA_NU, "lr": FNA_LR, "seed": seed,
+        "trainable_params": actual_count, "per_task": {}
+    }
+
     for task in tasks:
-        print("--- Task:", task, "---")
+        print(f"\n--- Task: {task} ---")
         loader = make_loader(task, tokenizer, split="test")
         t0 = time.time()
         for epoch in range(1, epochs+1):
@@ -106,45 +136,82 @@ def train_fna(tasks, epochs, results_dir):
                 loss = out.loss
                 loss.backward()
                 optimizer.step()
-                total_loss += loss.item(); n+=1
+                total_loss += loss.item()
+                n += 1
             print(f"  Epoch {epoch}/{epochs}  loss={total_loss/max(n,1):.4f}")
-        acc = evaluate(model, tokenizer, task, device)
-        elapsed = time.time()-t0
+        acc     = evaluate(model, tokenizer, task, device)
+        elapsed = time.time() - t0
         print(f"  Accuracy: {acc*100:.2f}%  ({elapsed:.1f}s)")
-        results["per_task"][task] = {"accuracy":round(acc,4),"time_s":round(elapsed,1)}
+        results["per_task"][task] = {"accuracy": round(acc,4), "time_s": round(elapsed,1)}
         optimizer.zero_velocity()
-    accs = [v["accuracy"] for v in results["per_task"].values()]
-    results["mean_accuracy"] = round(sum(accs)/len(accs),4)
-    os.makedirs(results_dir, exist_ok=True)
-    with open(Path(results_dir)/"fna_results.json","w") as f:
-        json.dump(results,f,indent=2)
-    print("Mean accuracy:", results["mean_accuracy"]*100)
 
-def train_lora(tasks, epochs, results_dir):
+    accs = [v["accuracy"] for v in results["per_task"].values()]
+    results["mean_accuracy"] = round(sum(accs)/len(accs), 4)
+    print("Mean accuracy: " + str(round(results["mean_accuracy"]*100, 2)))
+
+    os.makedirs(results_dir, exist_ok=True)
+    path = Path(results_dir) / f"fna_s{seed}.json"
+    with open(path, "w") as f:
+        json.dump(results, f, indent=2)
+    print("Saved to " + str(path))
+    return results
+
+
+def train_lora(tasks, epochs, lora_rank, seed, results_dir):
     from transformers import T5ForConditionalGeneration, T5Tokenizer
-    from peft import get_peft_model, LoraConfig, TaskType
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import math
+    set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print("Adapter: LoRA | Device:", device)
+
+    class LoRALayer(nn.Module):
+        def __init__(self, linear, rank):
+            super().__init__()
+            self.weight = nn.Parameter(linear.weight.data.clone(), requires_grad=False)
+            self.bias   = nn.Parameter(linear.bias.data.clone(), requires_grad=False) if linear.bias is not None else None
+            in_f, out_f = linear.in_features, linear.out_features
+            self.A = nn.Parameter(torch.empty(rank, in_f))
+            self.B = nn.Parameter(torch.zeros(out_f, rank))
+            nn.init.kaiming_uniform_(self.A, a=math.sqrt(5))
+            self.scale = 1.0
+        def forward(self, x):
+            base = F.linear(x, self.weight, self.bias)
+            lora = F.linear(F.linear(x, self.A), self.B) * self.scale
+            return base + lora
+
     tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME)
     model     = T5ForConditionalGeneration.from_pretrained(MODEL_NAME)
-    # Target only encoder q,v to match FNA
-    lora_cfg  = LoraConfig(
-        task_type=TaskType.SEQ_2_SEQ_LM, r=LORA_RANK,
-        lora_alpha=LORA_RANK,
-        target_modules=["q","v"],
-        lora_dropout=0.0, bias="none",
-        layers_to_transform=list(range(6)),  # encoder only (layers 0-5)
-    )
-    model = get_peft_model(model, lora_cfg)
-    model.print_trainable_parameters()
+
+    # Freeze everything
+    for p in model.parameters():
+        p.requires_grad = False
+
+    # Inject LoRA only into ENCODER_QV (same 12 layers as FNA)
+    for name, mod in model.named_modules():
+        if name in ENCODER_QV and isinstance(mod, nn.Linear):
+            parts  = name.split(".")
+            parent = model
+            for part in parts[:-1]:
+                parent = getattr(parent, part)
+            setattr(parent, parts[-1], LoRALayer(mod, lora_rank).to(device))
+
     model = model.to(device)
     lora_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer   = torch.optim.AdamW(lora_params, lr=LORA_LR, weight_decay=0.01)
-    total_trainable = sum(p.numel() for p in lora_params)
-    results = {"adapter":"lora","tasks":tasks,"rank":LORA_RANK,
-               "lr":LORA_LR,"trainable_params":total_trainable,"per_task":{}}
+    actual_count = sum(p.numel() for p in lora_params)
+    print("Adapter: LoRA-manual | rank=" + str(lora_rank) + " | layers=" + str(len(ENCODER_QV)))
+    print("Trainable params: " + str(actual_count) + " | lr=" + str(LORA_LR) + " | seed=" + str(seed))
+
+    optimizer = torch.optim.AdamW(lora_params, lr=LORA_LR, weight_decay=0.01)
+
+    results = {
+        "adapter": "lora", "tasks": tasks, "epochs": epochs,
+        "rank": lora_rank, "lr": LORA_LR, "seed": seed,
+        "trainable_params": actual_count, "per_task": {}
+    }
+
     for task in tasks:
-        print("--- Task:", task, "---")
+        print("\n--- Task: " + task + " ---")
         loader = make_loader(task, tokenizer, split="test")
         t0 = time.time()
         for epoch in range(1, epochs+1):
@@ -160,26 +227,63 @@ def train_lora(tasks, epochs, results_dir):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(lora_params, 1.0)
                 optimizer.step()
-                total_loss += loss.item(); n+=1
+                total_loss += loss.item()
+                n += 1
             print(f"  Epoch {epoch}/{epochs}  loss={total_loss/max(n,1):.4f}")
-        acc = evaluate(model, tokenizer, task, device)
-        elapsed = time.time()-t0
-        print(f"  Accuracy: {acc*100:.2f}%  ({elapsed:.1f}s)")
-        results["per_task"][task] = {"accuracy":round(acc,4),"time_s":round(elapsed,1)}
-    accs = [v["accuracy"] for v in results["per_task"].values()]
-    results["mean_accuracy"] = round(sum(accs)/len(accs),4)
-    os.makedirs(results_dir, exist_ok=True)
-    with open(Path(results_dir)/"lora_results.json","w") as f:
-        json.dump(results,f,indent=2)
-    print("Mean accuracy:", results["mean_accuracy"]*100)
+        acc     = evaluate(model, tokenizer, task, device)
+        elapsed = time.time() - t0
+        print("  Accuracy: " + str(round(acc*100,2)) + "%  (" + str(round(elapsed,1)) + "s)")
+        results["per_task"][task] = {"accuracy": round(acc,4), "time_s": round(elapsed,1)}
 
-if __name__=="__main__":
+    accs = [v["accuracy"] for v in results["per_task"].values()]
+    results["mean_accuracy"] = round(sum(accs)/len(accs), 4)
+    print("Mean accuracy: " + str(round(results["mean_accuracy"]*100, 2)))
+
+    os.makedirs(results_dir, exist_ok=True)
+    path = Path(results_dir) / f"lora_r{lora_rank}_s{seed}.json"
+    with open(path, "w") as f:
+        json.dump(results, f, indent=2)
+    print("Saved to " + str(path))
+    return results
+
+
+def compare(results_dir, fna_seed, lora_rank, lora_seed):
+    fna_path  = Path(results_dir) / f"fna_s{fna_seed}.json"
+    lora_path = Path(results_dir) / f"lora_r{lora_rank}_s{lora_seed}.json"
+    fna  = json.load(open(fna_path))
+    lora = json.load(open(lora_path))
+    print(f"\nFNA (196K params, nu={fna['nu']}) vs LoRA-r{lora_rank} ({lora['trainable_params']:,} params)")
+    print(f"{'Task':<25} {'LoRA':>8} {'FNA':>8} {'Delta':>8}")
+    print("-" * 55)
+    for task in fna["per_task"]:
+        f = fna["per_task"][task]["accuracy"]*100
+        l = lora["per_task"][task]["accuracy"]*100
+        print(f"  {task:<23} {l:>7.2f}% {f:>7.2f}% {f-l:>+7.2f}%")
+    fm = fna["mean_accuracy"]*100
+    lm = lora["mean_accuracy"]*100
+    print("-" * 55)
+    print(f"  {'MEAN':<23} {lm:>7.2f}% {fm:>7.2f}% {fm-lm:>+7.2f}%")
+    print(f"\n  FNA params:  {fna['trainable_params']:,}")
+    print(f"  LoRA params: {lora['trainable_params']:,}")
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--adapter", choices=["fna","lora"], default="fna")
-    parser.add_argument("--tasks",   type=str, default="anatomy,astronomy")
-    parser.add_argument("--epochs",  type=int, default=5)
+    parser.add_argument("--adapter",     choices=["fna","lora","compare"], default="fna")
+    parser.add_argument("--tasks",       type=str, default="anatomy,astronomy,college_mathematics,high_school_physics")
+    parser.add_argument("--epochs",      type=int, default=5)
+    parser.add_argument("--lora_rank",   type=int, default=16)
+    parser.add_argument("--seed",        type=int, default=42)
     parser.add_argument("--results_dir", type=str, default="results")
+    parser.add_argument("--fna_seed",    type=int, default=42)
+    parser.add_argument("--lora_seed",   type=int, default=42)
     args = parser.parse_args()
+
     tasks = [t.strip() for t in args.tasks.split(",")]
-    if args.adapter=="fna": train_fna(tasks, args.epochs, args.results_dir)
-    else: train_lora(tasks, args.epochs, args.results_dir)
+
+    if args.adapter == "fna":
+        train_fna(tasks, args.epochs, args.lora_rank, args.seed, args.results_dir)
+    elif args.adapter == "lora":
+        train_lora(tasks, args.epochs, args.lora_rank, args.seed, args.results_dir)
+    elif args.adapter == "compare":
+        compare(args.results_dir, args.fna_seed, args.lora_rank, args.lora_seed)

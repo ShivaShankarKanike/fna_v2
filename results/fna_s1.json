@@ -1,0 +1,34 @@
+{
+  "adapter": "fna",
+  "tasks": [
+    "anatomy",
+    "astronomy",
+    "college_mathematics",
+    "high_school_physics"
+  ],
+  "epochs": 5,
+  "grid_size": 128,
+  "nu": 0.2,
+  "lr": 0.0003,
+  "seed": 1,
+  "trainable_params": 196608,
+  "per_task": {
+    "anatomy": {
+      "accuracy": 0.3333,
+      "time_s": 21.6
+    },
+    "astronomy": {
+      "accuracy": 0.3882,
+      "time_s": 23.7
+    },
+    "college_mathematics": {
+      "accuracy": 0.4,
+      "time_s": 15.7
+    },
+    "high_school_physics": {
+      "accuracy": 0.3709,
+      "time_s": 22.8
+    }
+  },
+  "mean_accuracy": 0.3731
+}

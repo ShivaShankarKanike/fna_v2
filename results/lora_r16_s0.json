@@ -1,0 +1,33 @@
+{
+  "adapter": "lora",
+  "tasks": [
+    "anatomy",
+    "astronomy",
+    "college_mathematics",
+    "high_school_physics"
+  ],
+  "epochs": 5,
+  "rank": 16,
+  "lr": 0.0003,
+  "seed": 0,
+  "trainable_params": 196608,
+  "per_task": {
+    "anatomy": {
+      "accuracy": 0.2519,
+      "time_s": 21.5
+    },
+    "astronomy": {
+      "accuracy": 0.3553,
+      "time_s": 23.6
+    },
+    "college_mathematics": {
+      "accuracy": 0.32,
+      "time_s": 15.7
+    },
+    "high_school_physics": {
+      "accuracy": 0.351,
+      "time_s": 22.6
+    }
+  },
+  "mean_accuracy": 0.3196
+}
