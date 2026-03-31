@@ -15,7 +15,7 @@ GRID_SIZE   = 128
 ALPHA       = 1.0
 LORA_RANK   = 8
 FNA_LR      = 3e-4
-FNA_NU      = 0.05
+FNA_NU      = 0.1515
 LORA_LR     = 3e-4
 
 # Only encoder q,v — 12 layers, fair comparison both sides
