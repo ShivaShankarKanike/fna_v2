@@ -164,9 +164,9 @@ class FNAMemoryLayer(nn.Module):
         # Treat (batch*seq) as the batch dimension
         # Reshape d_latent into a 2D grid H x W where H*W = d_latent
         # For d_latent=32: H=W=... we find closest square
-        H = int(math.sqrt(self.d_latent))
-        W = self.d_latent // H
-        # Pad if d_latent is not perfectly rectangular
+        # Use fixed grid: find H,W such that H*W >= d_latent
+        H = int(math.ceil(math.sqrt(self.d_latent)))
+        W = H
         pad = H * W - self.d_latent
         if pad > 0:
             z = F.pad(z, (0, pad))
