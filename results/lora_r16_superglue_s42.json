@@ -1,0 +1,26 @@
+{
+  "adapter": "lora_r16",
+  "tasks": [
+    "boolq",
+    "cb",
+    "rte"
+  ],
+  "epochs": 5,
+  "seed": 42,
+  "trainable_params": 196608,
+  "per_task": {
+    "boolq": {
+      "accuracy": 0.6829,
+      "time_s": 1244.7
+    },
+    "cb": {
+      "accuracy": 0.7679,
+      "time_s": 37.7
+    },
+    "rte": {
+      "accuracy": 0.3394,
+      "time_s": 325.0
+    }
+  },
+  "mean_accuracy": 0.5967
+}
