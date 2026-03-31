@@ -70,46 +70,56 @@ ENCODER_QV = [
 
 # Each needle is (fact, question, answer)
 NEEDLES = [
-    ("The capital of France is Paris.",
-     "What is the capital of France?", "Paris"),
-    ("Water boils at 100 degrees Celsius.",
-     "At what temperature does water boil?", "100 degrees"),
-    ("The speed of light is 299792458 meters per second.",
-     "What is the speed of light?", "299792458 meters"),
-    ("Shakespeare wrote Hamlet in 1600.",
-     "Who wrote Hamlet?", "Shakespeare"),
-    ("The Amazon river is in South America.",
-     "Where is the Amazon river?", "South America"),
-    ("Gold has the chemical symbol Au.",
-     "What is the chemical symbol for gold?", "Au"),
-    ("The Moon orbits the Earth.",
-     "What does the Moon orbit?", "Earth"),
-    ("DNA stands for deoxyribonucleic acid.",
-     "What does DNA stand for?", "deoxyribonucleic acid"),
-    ("The human body has 206 bones.",
-     "How many bones does the human body have?", "206"),
-    ("Mount Everest is the tallest mountain on Earth.",
-     "What is the tallest mountain on Earth?", "Mount Everest"),
-    ("Einstein published the theory of relativity in 1905.",
-     "Who published the theory of relativity?", "Einstein"),
-    ("The Pacific Ocean is the largest ocean.",
-     "What is the largest ocean?", "Pacific Ocean"),
-    ("Oxygen has the atomic number 8.",
-     "What is the atomic number of oxygen?", "8"),
-    ("The Great Wall of China was built over many centuries.",
-     "What was built over many centuries in China?", "Great Wall"),
-    ("The heart pumps blood through the body.",
-     "What pumps blood through the body?", "heart"),
-    ("Python was created by Guido van Rossum.",
-     "Who created Python?", "Guido van Rossum"),
-    ("The Earth takes 365 days to orbit the Sun.",
-     "How long does Earth take to orbit the Sun?", "365 days"),
-    ("Photosynthesis converts sunlight into energy.",
-     "What converts sunlight into energy?", "Photosynthesis"),
-    ("The Eiffel Tower is located in Paris.",
-     "Where is the Eiffel Tower located?", "Paris"),
-    ("Gravity was described by Isaac Newton.",
-     "Who described gravity?", "Isaac Newton"),
+    ("The access code is A1-X9.", "What is the access code?", "A1-X9"),
+    ("The secret key is Alpha-7.", "What is the secret key?", "Alpha-7"),
+    ("The project ID is BR-442.", "What is the project ID?", "BR-442"),
+    ("The batch number is CM-991.", "What is the batch number?", "CM-991"),
+    ("The file code is DX-115.", "What is the file code?", "DX-115"),
+    ("The reference ID is EV-338.", "What is the reference ID?", "EV-338"),
+    ("The serial number is FZ-774.", "What is the serial number?", "FZ-774"),
+    ("The ticket code is GK-221.", "What is the ticket code?", "GK-221"),
+    ("The entry key is HT-559.", "What is the entry key?", "HT-559"),
+    ("The system ID is IQ-883.", "What is the system ID?", "IQ-883"),
+    ("The access code is JM-116.", "What is the access code?", "JM-116"),
+    ("The secret key is KP-447.", "What is the secret key?", "KP-447"),
+    ("The project ID is LR-772.", "What is the project ID?", "LR-772"),
+    ("The batch number is MS-338.", "What is the batch number?", "MS-338"),
+    ("The file code is NT-664.", "What is the file code?", "NT-664"),
+    ("The reference ID is OV-991.", "What is the reference ID?", "OV-991"),
+    ("The serial number is PW-225.", "What is the serial number?", "PW-225"),
+    ("The ticket code is QX-558.", "What is the ticket code?", "QX-558"),
+    ("The entry key is RY-884.", "What is the entry key?", "RY-884"),
+    ("The system ID is SZ-117.", "What is the system ID?", "SZ-117"),
+    ("The access code is TA-443.", "What is the access code?", "TA-443"),
+    ("The secret key is UB-776.", "What is the secret key?", "UB-776"),
+    ("The project ID is VC-112.", "What is the project ID?", "VC-112"),
+    ("The batch number is WD-448.", "What is the batch number?", "WD-448"),
+    ("The file code is XE-773.", "What is the file code?", "XE-773"),
+    ("The reference ID is YF-339.", "What is the reference ID?", "YF-339"),
+    ("The serial number is ZG-665.", "What is the serial number?", "ZG-665"),
+    ("The ticket code is AH-992.", "What is the ticket code?", "AH-992"),
+    ("The entry key is BI-226.", "What is the entry key?", "BI-226"),
+    ("The system ID is CJ-559.", "What is the system ID?", "CJ-559"),
+    ("The access code is DK-885.", "What is the access code?", "DK-885"),
+    ("The secret key is EL-118.", "What is the secret key?", "EL-118"),
+    ("The project ID is FM-444.", "What is the project ID?", "FM-444"),
+    ("The batch number is GN-779.", "What is the batch number?", "GN-779"),
+    ("The file code is HO-113.", "What is the file code?", "HO-113"),
+    ("The reference ID is IP-446.", "What is the reference ID?", "IP-446"),
+    ("The serial number is JQ-775.", "What is the serial number?", "JQ-775"),
+    ("The ticket code is KR-331.", "What is the ticket code?", "KR-331"),
+    ("The entry key is LS-668.", "What is the entry key?", "LS-668"),
+    ("The system ID is MT-994.", "What is the system ID?", "MT-994"),
+    ("The access code is NU-228.", "What is the access code?", "NU-228"),
+    ("The secret key is OV-561.", "What is the secret key?", "OV-561"),
+    ("The project ID is PW-887.", "What is the project ID?", "PW-887"),
+    ("The batch number is QX-121.", "What is the batch number?", "QX-121"),
+    ("The file code is RY-454.", "What is the file code?", "RY-454"),
+    ("The reference ID is SZ-783.", "What is the reference ID?", "SZ-783"),
+    ("The serial number is TA-319.", "What is the serial number?", "TA-319"),
+    ("The ticket code is UB-642.", "What is the ticket code?", "UB-642"),
+    ("The entry key is VC-975.", "What is the entry key?", "VC-975"),
+    ("The system ID is WD-308.", "What is the system ID?", "WD-308")
 ]
 
 # Distractor sentences — irrelevant facts used as noise
@@ -311,10 +321,9 @@ def train_on_needles(model, tokenizer, optimizer, params,
 
 @torch.no_grad()
 def evaluate_needles(model, tokenizer, noise_ratio, device, n_eval=20):
-    """Evaluate needle retrieval accuracy at a fixed noise ratio."""
     model.eval()
     correct, total = 0, 0
-
+    random.seed(int(noise_ratio * 100))  # different sample per noise level
     eval_needles = NEEDLES[:n_eval]
 
     for fact, question, answer in eval_needles:
@@ -326,9 +335,8 @@ def evaluate_needles(model, tokenizer, noise_ratio, device, n_eval=20):
         out = model.generate(**enc, max_new_tokens=16, do_sample=False)
         pred = tokenizer.decode(out[0], skip_special_tokens=True).strip().lower()
 
-        # Soft match: check if any key word from answer appears in prediction
-        answer_words = answer.lower().split()
-        if any(w in pred for w in answer_words if len(w) > 2):
+        # Strict match: answer must appear exactly in prediction
+        if answer.lower() in pred:
             correct += 1
         total += 1
 
